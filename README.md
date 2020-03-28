@@ -25,7 +25,7 @@ An out-of-tree port of Tock to the [PineTime](https://www.pine64.org/pinetime) s
 1. Debug with `arm-none-eabi-gdb`
 
     ```shell
-    $ arm-none-eabi-gdb -x scripts/pinetime.gdb board/target/thumbv7m-none-eabi/debug/pine_time.elf
+    $ ./scripts/gdb.sh
     # Alternatively, use helper script to launch gdb with cgdb
     $ ./scripts/cgdb.sh
     ```
