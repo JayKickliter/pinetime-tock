@@ -6,21 +6,26 @@ edition = "2018"
 build = "build.rs"
 
 [profile.dev]
-panic = "abort"
+debug = true
 lto = false
 opt-level = "z"
+panic = "abort"
+
+# Optimize deps in debug profile to save space.
+[profile.dev.package."*"]
 debug = true
+opt-level = "z"
 
 [profile.release]
-panic = "abort"
+debug = true
 lto = true
 opt-level = "z"
-debug = true
+panic = "abort"
 
 [dependencies]
-cortexm4 = { path = "../tock/arch/cortex-m4" }
 capsules = { path = "../tock/capsules" }
+components = { path = "../tock/boards/components" }
+cortexm4 = { path = "../tock/arch/cortex-m4" }
 kernel = { path = "../tock/kernel" }
 nrf52832 = { path = "../tock/chips/nrf52832" }
 nrf52dk_base = { path = "../tock/boards/nordic/nrf52dk_base" }
-components = { path = "../tock/boards/components" }
