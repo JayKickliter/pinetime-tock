@@ -1,64 +1,12 @@
-//! Tock kernel for the Nordic Semiconductor nRF52 development kit (DK), a.k.a. the PCA10040. </br>
+//! Tock kernel for the [PineTime](https://www.pine64.org/pinetime) smartwatch.
+//!
 //! It is based on nRF52838 SoC (Cortex M4 core with a BLE transceiver) with many exported
 //! I/O and peripherals.
 //!
-//! nRF52838 has only one port and uses pins 0-31!
-//!
-//! Furthermore, there exist another a preview development kit for nRF52840 but it is not supported
-//! yet because unfortunately the pin configuration differ from nRF52-DK whereas nRF52840 uses two
-//! ports where port 0 has 32 pins and port 1 has 16 pins.
-//!
-//! Pin Configuration
-//! -------------------
-//!
-//! ### `GPIOs`
-//! * P0.27 -> (top left header)
-//! * P0.26 -> (top left header)
-//! * P0.02 -> (top left header)
-//! * P0.25 -> (top left header)
-//! * P0.24 -> (top left header)
-//! * P0.23 -> (top left header)
-//! * P0.22 -> (top left header)
-//! * P0.12 -> (top mid header)
-//! * P0.11 -> (top mid header)
-//! * P0.03 -> (bottom right header)
-//! * P0.04 -> (bottom right header)
-//! * P0.28 -> (bottom right header)
-//! * P0.29 -> (bottom right header)
-//! * P0.30 -> (bottom right header)
-//! * P0.31 -> (bottom right header)
-//!
-//! ### `LEDs`
-//! * P0.17 -> LED1
-//! * P0.18 -> LED2
-//! * P0.19 -> LED3
-//! * P0.20 -> LED4
-//!
-//! ### `Buttons`
-//! * P0.13 -> Button1
-//! * P0.14 -> Button2
-//! * P0.15 -> Button3
-//! * P0.16 -> Button4
-//! * P0.21 -> Reset Button
-//!
-//! ### `UART`
-//! * P0.05 -> RTS
-//! * P0.06 -> TXD
-//! * P0.07 -> CTS
-//! * P0.08 -> RXD
-//!
-//! ### `NFC`
-//! * P0.09 -> NFC1
-//! * P0.10 -> NFC2
-//!
-//! ### `LFXO`
-//! * P0.01 -> XL2
-//! * P0.00 -> XL1
-//!
 //! Author
 //! -------------------
-//! * Niklas Adolfsson <niklasadolfsson1@gmail.com>
-//! * July 16, 2017
+//! * Jay Kickliter <jay@kickliter.com>
+//! * 28 March 2020
 
 #![no_std]
 #![no_main]
@@ -68,29 +16,10 @@ use kernel::component::Component;
 #[allow(unused_imports)]
 use kernel::{debug, debug_gpio, debug_verbose, static_init};
 use nrf52832::gpio::Pin;
-use nrf52dk_base::{SpiPins, UartChannel, UartPins};
 
-// The nRF52 DK LEDs (see back of board)
-const LED1_PIN: Pin = Pin::P0_17;
-const LED2_PIN: Pin = Pin::P0_18;
-const LED3_PIN: Pin = Pin::P0_19;
-const LED4_PIN: Pin = Pin::P0_20;
-
-// The nRF52 DK buttons (see back of board)
-const BUTTON1_PIN: Pin = Pin::P0_13;
-const BUTTON2_PIN: Pin = Pin::P0_14;
-const BUTTON3_PIN: Pin = Pin::P0_15;
-const BUTTON4_PIN: Pin = Pin::P0_16;
-const BUTTON_RST_PIN: Pin = Pin::P0_21;
-
-const UART_RTS: Option<Pin> = Some(Pin::P0_05);
-const UART_TXD: Pin = Pin::P0_06;
-const UART_CTS: Option<Pin> = Some(Pin::P0_07);
-const UART_RXD: Pin = Pin::P0_08;
-
-const SPI_MOSI: Pin = Pin::P0_22;
-const SPI_MISO: Pin = Pin::P0_23;
-const SPI_CLK: Pin = Pin::P0_24;
+const LED_PIN: Pin = Pin::P0_17;
+const BUTTON_DRIVE_PIN: Pin = Pin::P0_03;
+const BUTTON_SENSE_PIN: Pin = Pin::P0_13;
 
 /// UART Writer
 pub mod io;
@@ -131,88 +60,24 @@ pub unsafe fn reset_handler() {
     let board_kernel = static_init!(kernel::Kernel, kernel::Kernel::new(&PROCESSES));
     let gpio = components::gpio::GpioComponent::new(board_kernel).finalize(
         components::gpio_component_helper!(
-            // Bottom right header on DK board
-            &nrf52832::gpio::PORT[Pin::P0_03],
-            &nrf52832::gpio::PORT[Pin::P0_04],
-            &nrf52832::gpio::PORT[Pin::P0_28],
-            &nrf52832::gpio::PORT[Pin::P0_29],
-            &nrf52832::gpio::PORT[Pin::P0_30],
-            &nrf52832::gpio::PORT[Pin::P0_31],
-            // Top mid header on DK board
-            &nrf52832::gpio::PORT[Pin::P0_12],
-            &nrf52832::gpio::PORT[Pin::P0_11],
-            // Top left header on DK board
-            &nrf52832::gpio::PORT[Pin::P0_27],
-            &nrf52832::gpio::PORT[Pin::P0_26],
-            &nrf52832::gpio::PORT[Pin::P0_02],
-            &nrf52832::gpio::PORT[Pin::P0_25]
-        ),
-    );
-    let button = components::button::ButtonComponent::new(board_kernel).finalize(
-        components::button_component_helper!(
-            (
-                &nrf52832::gpio::PORT[BUTTON1_PIN],
-                kernel::hil::gpio::ActivationMode::ActiveLow,
-                kernel::hil::gpio::FloatingState::PullUp
-            ), //13
-            (
-                &nrf52832::gpio::PORT[BUTTON2_PIN],
-                kernel::hil::gpio::ActivationMode::ActiveLow,
-                kernel::hil::gpio::FloatingState::PullUp
-            ), //14
-            (
-                &nrf52832::gpio::PORT[BUTTON3_PIN],
-                kernel::hil::gpio::ActivationMode::ActiveLow,
-                kernel::hil::gpio::FloatingState::PullUp
-            ), //15
-            (
-                &nrf52832::gpio::PORT[BUTTON4_PIN],
-                kernel::hil::gpio::ActivationMode::ActiveLow,
-                kernel::hil::gpio::FloatingState::PullUp
-            ) //16
+            // Button out. High side of button voltage divider.
+            &nrf52832::gpio::PORT[BUTTON_DRIVE_PIN]
         ),
     );
 
-    let led = components::led::LedsComponent::new().finalize(components::led_component_helper!(
-        (
-            &nrf52832::gpio::PORT[LED1_PIN],
-            kernel::hil::gpio::ActivationMode::ActiveLow
-        ),
-        (
-            &nrf52832::gpio::PORT[LED2_PIN],
-            kernel::hil::gpio::ActivationMode::ActiveLow
-        ),
-        (
-            &nrf52832::gpio::PORT[LED3_PIN],
-            kernel::hil::gpio::ActivationMode::ActiveLow
-        ),
-        (
-            &nrf52832::gpio::PORT[LED4_PIN],
-            kernel::hil::gpio::ActivationMode::ActiveLow
-        )
-    ));
+    let button = components::button::ButtonComponent::new(board_kernel).finalize(
+        components::button_component_helper!((
+            &nrf52832::gpio::PORT[BUTTON_SENSE_PIN],
+            kernel::hil::gpio::ActivationMode::ActiveHigh,
+            kernel::hil::gpio::FloatingState::PullNone
+        )),
+    );
+
+    let led = components::led::LedsComponent::new().finalize(components::led_component_helper!((
+        &nrf52832::gpio::PORT[LED_PIN],
+        kernel::hil::gpio::ActivationMode::ActiveHigh
+    )));
+
     let chip = static_init!(nrf52832::chip::Chip, nrf52832::chip::new());
     CHIP = Some(chip);
-
-    nrf52dk_base::setup_board(
-        board_kernel,
-        BUTTON_RST_PIN,
-        &nrf52832::gpio::PORT,
-        gpio,
-        LED1_PIN,
-        LED2_PIN,
-        LED3_PIN,
-        led,
-        UartChannel::Pins(UartPins::new(UART_RTS, UART_TXD, UART_CTS, UART_RXD)),
-        &SpiPins::new(SPI_MOSI, SPI_MISO, SPI_CLK),
-        &None,
-        button,
-        false,
-        &mut APP_MEMORY,
-        &mut PROCESSES,
-        FAULT_RESPONSE,
-        nrf52832::uicr::Regulator0Output::DEFAULT,
-        false,
-        chip,
-    );
 }
