@@ -8,12 +8,12 @@ An out-of-tree port of Tock to the [PineTime](https://www.pine64.org/pinetime) s
 * [Schematics](http://files.pine64.org/doc/PineTime/PineTime%20Schematic-V1.0a-20191103.pdf)
 * [Pinout](http://files.pine64.org/doc/PineTime/PineTime%20Port%20Assignment%20rev1.0.pdf)
 
-## Build and Debug (JLink)
+## Debugging (JLink)
 
 1. Build kernel with debug symbols
 
     ```shell
-    $ make -C board debug
+    $ make -C board/pinetime debug
     ```
 
 1. Start JLink GDB server in a seperate shell
@@ -26,6 +26,6 @@ An out-of-tree port of Tock to the [PineTime](https://www.pine64.org/pinetime) s
 
     ```shell
     $ ./scripts/gdb.sh
-    # Alternatively, use helper script to launch gdb with cgdb
+    # Alternatively, debug with `cgdb` TUI interface
     $ ./scripts/cgdb.sh
     ```

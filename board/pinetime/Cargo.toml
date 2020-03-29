@@ -1,5 +1,5 @@
 [package]
-name = "pine_time"
+name = "pinetime"
 version = "0.1.0"
 authors = ["Jay Kickliter <jay@kickliter.com>"]
 edition = "2018"
@@ -23,9 +23,9 @@ opt-level = "z"
 panic = "abort"
 
 [dependencies]
-capsules = { path = "../tock/capsules" }
-components = { path = "../tock/boards/components" }
-cortexm4 = { path = "../tock/arch/cortex-m4" }
-kernel = { path = "../tock/kernel" }
-nrf52832 = { path = "../tock/chips/nrf52832" }
-nrf52dk_base = { path = "../tock/boards/nordic/nrf52dk_base" }
+capsules = { path = "../../tock/capsules" }
+components = { path = "../../tock/boards/components" }
+cortexm4 = { path = "../../tock/arch/cortex-m4" }
+kernel = { path = "../../tock/kernel" }
+nrf52832 = { path = "../../tock/chips/nrf52832" }
+nrf52dk_base = { path = "../../tock/boards/nordic/nrf52dk_base" }
