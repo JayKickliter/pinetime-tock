@@ -7,6 +7,10 @@ TOCK_ARCH = cortex-m4
 
 include ../../tock/boards/Makefile.common
 
-.PHONY: flash
-flash: target/$(TARGET)/release/$(PLATFORM).bin
+.PHONY: flash-release
+flash-release: target/$(TARGET)/release/$(PLATFORM).bin
+	$(TOCKLOADER) $(TOCKLOADER_GENERAL_FLAGS) flash --address $(KERNEL_ADDRESS) $(TOCKLOADER_JTAG_FLAGS) $<
+
+.PHONY: flash-debug
+flash-debug: target/$(TARGET)/debug/$(PLATFORM).bin
 	$(TOCKLOADER) $(TOCKLOADER_GENERAL_FLAGS) flash --address $(KERNEL_ADDRESS) $(TOCKLOADER_JTAG_FLAGS) $<
