@@ -11,8 +11,6 @@ monitor reset
 #
 # CPU core initialization (to be done by user)
 #
-# Set the processor mode
-# monitor reg cpsr = 0xd3
 # Set auto JTAG speed
 monitor speed auto
 
@@ -21,10 +19,5 @@ set remote memory-write-packet-size 1024
 set remote memory-write-packet-size fixed
 
 load
-
 break reset_handler
-commands
-  up
-end
-
 run
