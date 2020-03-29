@@ -1,6 +1,6 @@
 # PineTime Tock
 
-An out-of-tree port of Tock to the [PineTime](https://www.pine64.org/pinetime) smart watch.
+An out-of-tree port of [Tock](https://www.tockos.org) to the [PineTime](https://www.pine64.org/pinetime) smart watch.
 
 ## PineTime Resources
 
