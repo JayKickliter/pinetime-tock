@@ -8,7 +8,7 @@ build = "build.rs"
 [profile.dev]
 debug = true
 lto = false
-opt-level = "z"
+opt-level = 0
 panic = "abort"
 
 # Optimize deps in debug profile to save space.
