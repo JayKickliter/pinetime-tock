@@ -9,21 +9,10 @@ use kernel::{
     capabilities,
     common::dynamic_deferred_call::{DynamicDeferredCall, DynamicDeferredCallClientState},
     component::Component,
-    create_capability, debug,
-    hil::{
-        self,
-        entropy::Entropy32,
-        gpio::{Configure, Output},
-        rng::Rng,
-    },
-    static_init,
+    create_capability, debug, hil, static_init,
 };
-use nrf52832::{gpio::Pin, rtc::Rtc};
-use nrf52dk_base::nrf52_components::ble::BLEComponent;
+use nrf52832::gpio::Pin;
 
-const BUTTON_DRIVE_PIN: Pin = Pin::P0_15;
-const BUTTON_SENSE_PIN: Pin = Pin::P0_13;
-const VIBRATION_MOTOR_PIN: u32 = 16;
 pub(crate) const LED_PIN: Pin = Pin::P0_27;
 
 /// Panic indicator.
@@ -49,25 +38,11 @@ pub static mut STACK_MEMORY: [u8; 0x2000] = [0; 0x2000];
 
 /// Supported drivers by the platform
 pub struct Platform {
-    ble_radio: &'static capsules::ble_advertising_driver::BLE<
-        'static,
-        nrf52832::ble_radio::Radio,
-        VirtualMuxAlarm<'static, Rtc<'static>>,
-    >,
-    button: &'static capsules::button::Button<'static>,
     console: &'static capsules::console::Console<'static>,
-    gpio: &'static capsules::gpio::GPIO<'static>,
-    led: &'static capsules::led::LED<'static>,
-    rng: &'static capsules::rng::RngDriver<'static>,
-    temp: &'static capsules::temperature::TemperatureSensor<'static>,
     ipc: kernel::ipc::IPC,
     alarm: &'static capsules::alarm::AlarmDriver<
         'static,
         VirtualMuxAlarm<'static, nrf52832::rtc::Rtc<'static>>,
-    >,
-    buzzer: &'static capsules::buzzer_driver::Buzzer<
-        'static,
-        capsules::virtual_alarm::VirtualMuxAlarm<'static, nrf52832::rtc::Rtc<'static>>,
     >,
 }
 
@@ -78,15 +53,7 @@ impl kernel::Platform for Platform {
     {
         match driver_num {
             capsules::console::DRIVER_NUM => f(Some(self.console)),
-            capsules::gpio::DRIVER_NUM => f(Some(self.gpio)),
             capsules::alarm::DRIVER_NUM => f(Some(self.alarm)),
-            capsules::led::DRIVER_NUM => f(Some(self.led)),
-            capsules::button::DRIVER_NUM => f(Some(self.button)),
-            capsules::rng::DRIVER_NUM => f(Some(self.rng)),
-            capsules::ble_advertising_driver::DRIVER_NUM => f(Some(self.ble_radio)),
-            capsules::temperature::DRIVER_NUM => f(Some(self.temp)),
-            capsules::buzzer_driver::DRIVER_NUM => f(Some(self.buzzer)),
-            kernel::ipc::DRIVER_NUM => f(Some(&self.ipc)),
             _ => f(None),
         }
     }
@@ -115,28 +82,6 @@ pub unsafe fn reset_handler() {
     );
     DynamicDeferredCall::set_global_instance(dynamic_deferred_caller);
 
-    // GPIOs
-    let gpio_pins = static_init!(
-        [&'static dyn kernel::hil::gpio::InterruptValuePin; 1],
-        [static_init!(
-            kernel::hil::gpio::InterruptValueWrapper,
-            kernel::hil::gpio::InterruptValueWrapper::new(&nrf52832::gpio::PORT[BUTTON_DRIVE_PIN])
-        )
-        .finalize(),]
-    );
-
-    // LEDs
-    let led_pins = static_init!(
-        [(
-            &'static dyn hil::gpio::Pin,
-            kernel::hil::gpio::ActivationMode
-        ); 1],
-        [(
-            &nrf52832::gpio::PORT[LED_PIN],
-            kernel::hil::gpio::ActivationMode::ActiveLow
-        ),]
-    );
-
     // Make non-volatile memory writable and activate the reset button
     nrf52832::nvmc::NVMC.erase_uicr();
     nrf52832::nvmc::NVMC.configure_writeable();
@@ -144,39 +89,9 @@ pub unsafe fn reset_handler() {
     // Configure kernel debug gpios as early as possible
     kernel::debug::assign_gpios(Some(&nrf52832::gpio::PORT[LED_PIN]), None, None);
 
-    //
-    // GPIO Pins
-    //
-    let gpio = static_init!(
-        capsules::gpio::GPIO<'static>,
-        capsules::gpio::GPIO::new(
-            gpio_pins,
-            board_kernel.create_grant(&memory_allocation_capability)
-        )
-    );
-    for pin in gpio_pins.iter() {
-        pin.set_client(gpio);
-    }
-
-    //
-    // LEDs
-    //
-    let led = static_init!(
-        capsules::led::LED<'static>,
-        capsules::led::LED::new(led_pins)
-    );
-
-    //
-    // Buttons
-    //
-    let button = components::button::ButtonComponent::new(board_kernel).finalize(
-        components::button_component_helper!((
-            &nrf52832::gpio::PORT[BUTTON_SENSE_PIN],
-            hil::gpio::ActivationMode::ActiveHigh,
-            hil::gpio::FloatingState::PullNone
-        )),
-    );
-
+    ////////////////////////////////////////////////////////////////////////
+    // Timers                                                             //
+    ////////////////////////////////////////////////////////////////////////
     //
     // RTC for Timers
     //
@@ -211,151 +126,51 @@ pub unsafe fn reset_handler() {
     );
     hil::time::Alarm::set_client(alarm_driver_virtual_alarm, alarm);
 
-    //
-    // RTT and Console and `debug!()`
-    //
+    ////////////////////////////////////////////////////////////////////////
+    // RTT and Console and `debug!()`                                     //
+    ////////////////////////////////////////////////////////////////////////
+    let console = {
+        // RTT communication channel
+        let rtt_memory = components::segger_rtt::SeggerRttMemoryComponent::new().finalize(());
+        let rtt = components::segger_rtt::SeggerRttComponent::new(mux_alarm, rtt_memory)
+            .finalize(components::segger_rtt_component_helper!(nrf52832::rtc::Rtc));
 
-    // RTT communication channel
-    let rtt_memory = components::segger_rtt::SeggerRttMemoryComponent::new().finalize(());
-    let rtt = components::segger_rtt::SeggerRttComponent::new(mux_alarm, rtt_memory)
-        .finalize(components::segger_rtt_component_helper!(nrf52832::rtc::Rtc));
+        // Create a shared UART channel for the console and for kernel debug.
+        let uart_mux = components::console::UartMuxComponent::new(rtt, 0, dynamic_deferred_caller)
+            .finalize(());
 
-    //
-    // Virtual UART
-    //
+        // Setup the console.
+        let console =
+            components::console::ConsoleComponent::new(board_kernel, uart_mux).finalize(());
+        // Create the debugger object that handles calls to `debug!()`.
+        components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
+        console
+    };
 
-    // Create a shared UART channel for the console and for kernel debug.
-    let uart_mux = components::console::UartMuxComponent::new(rtt, 115200, dynamic_deferred_caller)
-        .finalize(());
-
-    // Setup the console.
-    let console = components::console::ConsoleComponent::new(board_kernel, uart_mux).finalize(());
-    // Create the debugger object that handles calls to `debug!()`.
-    components::debug_writer::DebugWriterComponent::new(uart_mux).finalize(());
-
-    //
-    // I2C Devices
-    //
-
-    // Create shared mux for the I2C bus
-    // let i2c_mux = static_init!(
-    //     capsules::virtual_i2c::MuxI2C<'static>,
-    //     capsules::virtual_i2c::MuxI2C::new(&nrf52832::i2c::TWIM0)
-    // );
-    // nrf52832::i2c::TWIM0.configure(
-    //     nrf52832::pinmux::Pinmux::new(21),
-    //     nrf52832::pinmux::Pinmux::new(20),
-    // );
-    // nrf52832::i2c::TWIM0.set_client(i2c_mux);
-
-    //
-    // BLE
-    //
-
-    let ble_radio =
-        BLEComponent::new(board_kernel, &nrf52832::ble_radio::RADIO, mux_alarm).finalize(());
-
-    //
-    // Temperature
-    //
-
-    // Setup internal temperature sensor
-    let temp = static_init!(
-        capsules::temperature::TemperatureSensor<'static>,
-        capsules::temperature::TemperatureSensor::new(
-            &mut nrf52832::temperature::TEMP,
-            board_kernel.create_grant(&memory_allocation_capability)
-        )
-    );
-    kernel::hil::sensors::TemperatureDriver::set_client(&nrf52832::temperature::TEMP, temp);
-
-    //
-    // RNG
-    //
-
-    // Convert hardware RNG to the Random interface.
-    let entropy_to_random = static_init!(
-        capsules::rng::Entropy32ToRandom<'static>,
-        capsules::rng::Entropy32ToRandom::new(&nrf52832::trng::TRNG)
-    );
-    nrf52832::trng::TRNG.set_client(entropy_to_random);
-
-    // Setup RNG for userspace
-    let rng = static_init!(
-        capsules::rng::RngDriver<'static>,
-        capsules::rng::RngDriver::new(
-            entropy_to_random,
-            board_kernel.create_grant(&memory_allocation_capability)
-        )
-    );
-    entropy_to_random.set_client(rng);
-
-    //
-    // PWM
-    //
-    let mux_pwm = static_init!(
-        capsules::virtual_pwm::MuxPwm<'static, nrf52832::pwm::Pwm>,
-        capsules::virtual_pwm::MuxPwm::new(&nrf52832::pwm::PWM0)
-    );
-    let virtual_pwm_buzzer = static_init!(
-        capsules::virtual_pwm::PwmPinUser<'static, nrf52832::pwm::Pwm>,
-        capsules::virtual_pwm::PwmPinUser::new(
-            mux_pwm,
-            nrf52832::pinmux::Pinmux::new(VIBRATION_MOTOR_PIN)
-        )
-    );
-    virtual_pwm_buzzer.add_to_mux();
-
-    //
-    // Buzzer
-    //
-    let virtual_alarm_buzzer = static_init!(
-        capsules::virtual_alarm::VirtualMuxAlarm<'static, nrf52832::rtc::Rtc>,
-        capsules::virtual_alarm::VirtualMuxAlarm::new(mux_alarm)
-    );
-    let buzzer = static_init!(
-        capsules::buzzer_driver::Buzzer<
-            'static,
-            capsules::virtual_alarm::VirtualMuxAlarm<'static, nrf52832::rtc::Rtc>,
-        >,
-        capsules::buzzer_driver::Buzzer::new(
-            virtual_pwm_buzzer,
-            virtual_alarm_buzzer,
-            capsules::buzzer_driver::DEFAULT_MAX_BUZZ_TIME_MS,
-            board_kernel.create_grant(&memory_allocation_capability)
-        )
-    );
-    hil::time::Alarm::set_client(virtual_alarm_buzzer, buzzer);
-
-    // Start all of the clocks. Low power operation will require a better
-    // approach than this.
-    nrf52832::clock::CLOCK.low_stop();
-    nrf52832::clock::CLOCK.high_stop();
-
-    nrf52832::clock::CLOCK.low_set_source(nrf52832::clock::LowClockSource::XTAL);
-    nrf52832::clock::CLOCK.low_start();
-    nrf52832::clock::CLOCK.high_set_source(nrf52832::clock::HighClockSource::XTAL);
-    nrf52832::clock::CLOCK.high_start();
-    while !nrf52832::clock::CLOCK.low_started() {}
-    while !nrf52832::clock::CLOCK.high_started() {}
+    ////////////////////////////////////////////////////////////////////////
+    // Clocks                                                             //
+    ////////////////////////////////////////////////////////////////////////
+    {
+        // Start all of the clocks. Low power operation will require a better
+        // approach than this.
+        use nrf52832::clock::{self, CLOCK};
+        CLOCK.low_stop();
+        CLOCK.high_stop();
+        CLOCK.low_set_source(clock::LowClockSource::XTAL);
+        CLOCK.low_start();
+        CLOCK.high_set_source(clock::HighClockSource::XTAL);
+        CLOCK.high_start();
+        while !CLOCK.low_started() {}
+        while !CLOCK.high_started() {}
+    }
 
     let platform = Platform {
-        button: button,
-        ble_radio: ble_radio,
         console: console,
-        led: led,
-        gpio: gpio,
-        rng: rng,
-        temp: temp,
         alarm: alarm,
-        buzzer: buzzer,
         ipc: kernel::ipc::IPC::new(board_kernel, &memory_allocation_capability),
     };
 
     let chip = static_init!(nrf52832::chip::Chip, nrf52832::chip::new());
-
-    nrf52832::gpio::PORT[Pin::P0_31].make_output();
-    nrf52832::gpio::PORT[Pin::P0_31].clear();
 
     debug!("Initialization complete. Entering main loop\r");
     debug!("{}", &nrf52832::ficr::FICR_INSTANCE);
